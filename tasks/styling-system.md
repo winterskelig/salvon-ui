@@ -5,29 +5,37 @@
 @salvon/ui is a React component library written from scratch. Its only runtime
 dependency is React (peer, >=19). Components ship with a default look that
 consumers can override in three ways: CSS variables (tokens), per-component
-templates supplied through a provider, and an MUI-like `sx` prop per instance.
+templates supplied through a provider, and a per-instance style prop called
+**`esx`** (similar to MUI's `sx`).
 
 The styling engine is called **esixs**. It lives in `src/esixs/` and must not
 import anything from outside that folder, because it may be published as a
 standalone package later.
 
-Read the repository before writing code. Existing setup: npm (no workspaces),
-tsdown for the build with two entries (`src/index.ts`, `src/esixs/index.ts`),
-a Vite playground in `playground/`, Vitest with jsdom and globals, strict
-TypeScript. `src/components/toggle/` contains a working unstyled Toggle with a
-test. `src/esixs/index.ts` and `src/system/index.ts` are empty placeholders.
+Read the repository and `CLAUDE.md` before writing code. Existing setup: npm
+(no workspaces), tsdown for the build with two entries (`src/index.ts`,
+`src/esixs/index.ts`), a Vite playground in `playground/`, Vitest with jsdom
+and globals, strict TypeScript. `src/components/toggle/` contains a working
+unstyled Toggle with a test. `src/esixs/index.ts` and `src/system/index.ts`
+are empty placeholders.
 
 Import direction, which you must keep:
 - `src/esixs` imports nothing from the rest of the repo.
 - `src/system` imports `src/esixs`.
 - `src/components` import `src/system` and `src/utils`.
 
+## Naming
+
+- The style prop on every component is `esx`. Never name a prop `sx`.
+- The style object type is `EsxObject`.
+- The engine is `esixs`; the React helper is `renderEsx`.
+
 ## Global constraints
 
 - Do not add any package to `dependencies` or `peerDependencies`. Do not
   install new packages at all without asking.
 - Strict TypeScript, no `any` in public APIs.
-- Work in four phases, in order. After each phase run `npm run typecheck` and
+- Work in five phases, in order. After each phase run `npm run typecheck` and
   `npx vitest run`; do not start the next phase until both pass.
 - Write tests first in every phase.
 - Class and CSS-variable prefix is `sv`. It appears in exactly one place: the
@@ -82,18 +90,20 @@ export interface SerializedStyle {
   css: string           // complete rule, or ''
 }
 
-export function createEsixs(config: EsixsConfig): {
+export interface Esixs {
   config: EsixsConfig
-  serialize(sx: SxObject): SerializedStyle
-  merge(...parts: ReadonlyArray<SxObject | null | undefined | false>): SxObject  // Phase 2
+  serialize(esx: EsxObject): SerializedStyle
+  merge(...parts: ReadonlyArray<EsxObject | null | undefined | false>): EsxObject  // Phase 2
   /** Dedupe by className and join into one stylesheet string. */
   toStyleSheet(styles: readonly SerializedStyle[]): string
 }
+
+export function createEsixs(config: EsixsConfig): Esixs
 ```
 
 ## Input grammar
 
-An `SxObject` is a plain object. Classify each entry in this order:
+An `EsxObject` is a plain object. Classify each entry in this order:
 
 1. **Skipped**: value is `null`, `undefined`, or `false`.
 2. **At-rule block**: key starts with `@` and value is a plain object.
@@ -183,15 +193,15 @@ misspelled breakpoint).
 - Hash the serialized body (text inside the outer braces), so equivalent inputs
   share a class. Inline 32-bit non-cryptographic hash (FNV-1a or MurmurHash2),
   base 36. The class name must always be a valid CSS identifier.
-- `WeakMap<object, SerializedStyle>` keyed by input identity. `sx` objects are
+- `WeakMap<object, SerializedStyle>` keyed by input identity. `esx` objects are
   treated as immutable. No unbounded string-keyed cache.
 
 ## Types
 
-`SxObject` gives autocomplete and checking for: every key of React's
+`EsxObject` gives autocomplete and checking for: every key of React's
 `CSSProperties` (normal value, token name where applicable, or a responsive
 object); the shorthand keys (`number | string` or responsive); custom
-properties; selector and at-rule keys mapping to a nested `SxObject`.
+properties; selector and at-rule keys mapping to a nested `EsxObject`.
 
 ## Phase 1 tests
 
@@ -236,14 +246,14 @@ Deep-merges style objects; later parts win. Rules:
 
 Tests: each rule above, three-way merges, key-order assertions, inputs frozen.
 
-## `renderSx` (the only esixs file that imports React)
+## `renderEsx` (the only esixs file that imports React)
 
 File: `src/esixs/react.tsx`, exported from `src/esixs/index.ts`.
 
 ```ts
-export function renderSx(
+export function renderEsx(
   esixs: Esixs,
-  sx: SxObject | null | undefined,
+  esx: EsxObject | null | undefined | false,
 ): { className: string; styleElement: ReactNode }
 ```
 
@@ -253,31 +263,95 @@ export function renderSx(
   `<style href={className} precedence={esixs.config.prefix}>{css}</style>`.
   React 19 hoists this into `<head>` and deduplicates by `href`, on the server
   and the client.
-- It is a plain function, not a hook: no hooks, no context, so it also works in
-  Server Components.
+- It is a plain function, not a hook: no hooks, no context.
 
-Tests (Testing Library): rendering a component that uses `renderSx` puts the
-rule in `document.head` once even when 50 instances render the same `sx`;
-different `sx` values produce two rules; empty `sx` renders no style element.
+Tests (Testing Library): rendering a component that uses `renderEsx` puts the
+rule in `document.head` once even when 50 instances render the same `esx`;
+different values produce two rules; an empty `esx` renders no style element.
 
 ---
 
-# Phase 3: templates (`src/system/`)
+# Phase 3: engine instance and the `Div` primitive
 
 ## Engine instance
 
 `src/system/esixs.ts` creates the single esixs instance used by the library:
 prefix `sv`, layer `salvon`, default breakpoints, and the token lists.
-Update `src/styles/theme.css` so it defines every token as
+Update the tokens CSS file in `src/styles/` so it defines every token as
 `--sv-${category}-${name}` on `:root`, and keep the two in sync with a test
 that parses the CSS file and compares names against the config.
+
+## `Div`
+
+File: `src/components/div/Div.tsx`. This is the library's base layout
+primitive, comparable to MUI's `Box`: an element with the `esx` prop built in
+and the ability to render as a different element or component. It has no
+default styles and no template.
+
+```tsx
+<Div esx={{ display: 'flex', gap: 8, p: 16 }}>...</Div>
+<Div as="section" esx={{ maxW: 960, mx: 'auto' }} />
+<Div as="a" href="/docs" esx={{ color: 'accent' }} />
+<Div as={RouterLink} to="/docs" esx={{ fontWeight: 600 }} />
+```
+
+Requirements:
+
+- **`as` prop** switches what is rendered. Default `'div'`. Accepts any
+  intrinsic element name or any component that accepts `className`.
+- **Polymorphic typing.** Props are inferred from `as`: `href` is valid with
+  `as="a"` and a type error on the default `div`; a custom component's own
+  props are required and checked. Suggested shape:
+
+  ```ts
+  type DivOwnProps<E extends ElementType> = {
+    as?: E
+    esx?: EsxObject | null | false
+    className?: string
+  }
+  export type DivProps<E extends ElementType = 'div'> =
+    DivOwnProps<E> & Omit<ComponentPropsWithRef<E>, keyof DivOwnProps<E>>
+  ```
+
+- **`ref`** is a plain prop (React 19) and reaches the rendered element with
+  the correct element type.
+- **Styling.** Calls `renderEsx` with the system esixs instance. Renders the
+  `styleElement` followed by the element, inside a fragment.
+- **Class names.** Generated class first, then the user's `className`, joined
+  with a space. With no `esx` (or an empty one) the element gets only the
+  user's `className`, and no `class` attribute at all if there is none.
+- `as` and `esx` are never forwarded to the DOM or to the rendered component.
+- All other props pass through untouched.
+- No hooks and no context inside `Div`.
+- Set `displayName` to `'Div'`.
+
+Export `Div` and `DivProps` from `src/index.ts`.
+
+## Phase 3 tests
+
+- renders a `div` by default; renders each of several intrinsic elements via `as`
+- renders a custom component via `as` and passes its props through
+- `as` and `esx` do not appear as DOM attributes
+- `ref` points at the rendered element
+- class joining in all four cases (esx only, className only, both, neither)
+- `esx` with nested selectors and responsive values produces the expected rule
+  in `document.head`
+- many `Div`s with the same `esx` produce one rule
+- type tests: `href` accepted on `as="a"`, rejected on default; `ref` type
+  follows `as`; missing required prop of a custom component is an error;
+  unknown token and wrong value types in `esx` are errors
+- tokens CSS file and token config stay in sync
+
+---
+
+# Phase 4: templates (`src/system/`)
 
 ## Template shape
 
 ```ts
 export interface SlotTemplate {
-  base?: SxObject
-  variants?: Record<string, Record<string, SxObject>>   // variant prop -> value -> styles
+  base?: EsxObject
+  variants?: Record<string, Record<string, EsxObject>>   // variant prop -> value -> styles
 }
 
 export interface Template<Slots extends string = 'root'> {
@@ -304,6 +378,7 @@ type TemplateOverrides = {
 ```
 
 Overrides may add new variant values that the default does not have.
+`Div` has no template and is not in the registry.
 
 ## `UIProvider`
 
@@ -322,7 +397,7 @@ function useTemplate<T extends Template<string>>(
   name: keyof TemplateRegistry,
   defaults: T,
   variantProps: Record<string, string | undefined>,
-  sx?: SxObject,
+  esx?: EsxObject | null | false,
 ): Record<keyof T['slots'], { className: string; styleElement: ReactNode }>
 ```
 
@@ -331,62 +406,66 @@ Resolution:
    alone; otherwise merge onto defaults slot by slot (`base` with `esixs.merge`,
    each variant value with `esixs.merge`, `defaultVariants` shallowly).
    Cache the effective template in a `WeakMap` keyed by the override object.
-2. Per slot: `esixs.merge(base, ...selectedVariantStyles, sxForThisSlot)`, where
-   selected variants are taken in the order the variant keys are declared, each
-   using the prop value or else `defaultVariants`. The `sx` argument applies to
-   the `root` slot only.
-3. Pass the merged object to `renderSx`.
+2. Per slot: `esixs.merge(base, ...selectedVariantStyles, esxForThisSlot)`,
+   where selected variants are taken in the order the variant keys are
+   declared, each using the prop value or else `defaultVariants`. The `esx`
+   argument applies to the `root` slot only.
+3. Pass the merged object to `renderEsx`.
 
-Performance: when `sx` is undefined, cache the merged per-slot object by
+Performance: when `esx` is not provided, cache the merged per-slot object by
 effective template plus the variant-value combination, so repeat renders hit
-the serializer's identity cache. When `sx` is provided, recompute.
+the serializer's identity cache. When `esx` is provided, recompute.
 
 Unknown variant value: development warning, then ignore it.
 
-## Phase 3 tests
+## Phase 4 tests
 
 - defaults with no provider; provider override merges; `replace: true` discards defaults
 - adding a new variant value through the provider
 - `defaultVariants` override; nested providers
-- precedence: default < provider override < variant < instance `sx`
+- precedence: default < provider override < variant < instance `esx`
 - one class per slot element; identical instances share one rule in `<head>`
-- theme.css and token config stay in sync
 
 ---
 
-# Phase 4: wire up Toggle as the reference component
+# Phase 5: wire up Toggle as the reference styled component
 
 - Add `src/components/toggle/toggle.template.ts` using `defineTemplate`, with a
   `root` slot, a sensible `base`, variants `variant: solid | outline` and
   `size: sm | md | lg`, `defaultVariants`, and `&[data-state="on"]`,
   `&:focus-visible`, `&[disabled]` styling. Use tokens for colors and radius,
   pixel numbers for sizes. Augment `TemplateRegistry`.
-- `Toggle` gains `variant`, `size` and `sx` props, calls `useTemplate`, renders
+- `Toggle` gains `variant`, `size` and `esx` props, calls `useTemplate`, renders
   the `styleElement` next to the button, and joins the generated class with any
   `className` prop. Existing behaviour and the existing test must not change.
-- Export from `src/index.ts`: `Toggle`, `UIProvider`, `defineTemplate`, and the
-  public types (`SxObject`, `Template`, `TemplateRegistry`, `ToggleProps`).
-- `"use client"`: the components and system code use context and state, so the
+- Export from `src/index.ts`: `Div`, `Toggle`, `UIProvider`, `defineTemplate`,
+  and the public types (`EsxObject`, `Template`, `TemplateRegistry`,
+  `DivProps`, `ToggleProps`).
+- `"use client"`: the system code and Toggle use context and state, so the
   built `dist/index.js` must begin with the `"use client"` directive, and
   `dist/esixs.js` must not have it. Bundlers drop per-file directives, so check
   the current tsdown documentation for the supported way to do this; do not
   guess option names. Add a test or script that asserts both conditions after
   `npm run build`.
-- Update `playground/main.tsx` to show: default Toggle, each variant and size,
-  an instance with `sx`, and a subtree wrapped in `UIProvider` with an override.
+- Update `playground/main.tsx` to show: a layout built from `Div` (including
+  `as` and a responsive `esx`), a default Toggle, each variant and size, a
+  Toggle instance with `esx`, and a subtree wrapped in `UIProvider` with an
+  override.
+- Update `CLAUDE.md`: the style prop is `esx`, and `Div` is the base primitive.
 
 ---
 
 # Out of scope (do not build)
 
 - Spacing scales, theme multipliers, any unit conversion other than number -> px
-- Theme objects in JavaScript, theme callback functions (`sx={(theme) => ...}`)
-- Functions inside templates, `ownerState`-style callbacks, `sx` arrays
-- Per-slot `sx` props or `slotProps`
+- Theme objects in JavaScript, theme callback functions (`esx={(theme) => ...}`)
+- Functions inside templates, `ownerState`-style callbacks, `esx` arrays
+- Style props directly on `Div` (`<Div p={16}>`); styles go through `esx` only
+- Per-slot `esx` props or `slotProps`
 - Atomic CSS, selector flattening, vendor auto-prefixing, keyframes helpers
 - Build-time extraction of default templates into a static CSS file
 - A bundler plugin or any source-code transformation
-- Any component other than Toggle
+- Any component other than `Div` and `Toggle`
 
 # Definition of done
 
@@ -394,5 +473,6 @@ Unknown variant value: development warning, then ignore it.
 - `package.json` has no new `dependencies` or `peerDependencies`.
 - The import-direction rule holds (add a test that greps `src/esixs` for
   imports leaving the folder).
+- No prop named `sx` exists anywhere in `src/`.
 - Final report: files created per phase, every rule you found ambiguous and how
   you resolved it, and the gzipped size of `dist/esixs.js` and `dist/index.js`.
