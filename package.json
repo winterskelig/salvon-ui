@@ -1,13 +1,17 @@
 {
   "name": "@winterskelig/salvon-ui",
-  "version": "1.0.0",
+  "version": "0.0.1",
+  "license": "MIT",
+  "author": "winterskelig",
+  "type": "module",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsdown && node -e \"require('fs').copyFileSync('src/styles/theme.css','dist/styles.css')\"",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && vitest run && npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "keywords": []
 }
