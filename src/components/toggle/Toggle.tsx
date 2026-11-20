@@ -1,5 +1,5 @@
 import type { ComponentPropsWithRef } from 'react'
-import { useControllableState } from '../../utils/useControllableState'
+import { useControllableState } from '../../hook/use-controllable-state'
 
 export interface ToggleProps extends Omit<ComponentPropsWithRef<'button'>, 'onChange'> {
   pressed?: boolean
