@@ -6,12 +6,23 @@
   "type": "module",
   "description": "",
   "main": "index.js",
+  "keywords": [],
+  "sideEffects": ["**/*.css"],
+  "files": ["dist"],
+  "exports": {
+    ".":            { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./esixs":      { "types": "./dist/esixs.d.ts", "default": "./dist/esixs.js" },
+    "./styles.css": "./dist/styles.css"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsdown && node -e \"require('fs').copyFileSync('src/styles/theme.css','dist/styles.css')\"",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && vitest run && npm run build"
-  },
-  "keywords": []
+  }
 }
