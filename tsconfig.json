@@ -11,8 +11,8 @@
     "verbatimModuleSyntax": true,
     "types": ["vitest/globals"],
     "paths": {
-      "@salvon-ui": ["./src/index.ts"],
-      "@salvon-ui/esixs": ["./src/esixs/index.ts"]
+      "@salvon/ui": ["./src/index.ts"],
+      "@salvon/ui/esixs": ["./src/esixs/index.ts"]
     }
   },
   "include": ["src", "playground"]
