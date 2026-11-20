@@ -9,9 +9,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: [
-      { find: /^@my\/package\/esixs$/, replacement: src('esixs/index.ts') },
-      { find: /^@my\/package\/styles\.css$/, replacement: src('styles/theme.css') },
-      { find: /^@my\/package$/, replacement: src('index.ts') },
+      { find: /^@salvon-ui\/esixs$/, replacement: src('esixs/index.ts') },
+      { find: /^@salvon-ui\/styles\.css$/, replacement: src('styles/theme.css') },
+      { find: /^@salvon-ui$/, replacement: src('index.ts') },
     ],
   },
 })
