@@ -1,1 +1,5 @@
-/**/
+:root {
+    --my-color-accent: #4f46e5;
+    --my-color-text: #111827;
+    --my-radius-md: 6px;
+}
